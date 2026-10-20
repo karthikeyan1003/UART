@@ -1,85 +1,96 @@
-module UART_TX(
+module UART_TX (
     input clk,
     input rst,
     input tx_start,
+    input parity_mode,
     input [7:0] data_in,
     output reg data_out,
     output reg LED
 );
 
-reg [13:0] baud_counter;
+reg [10:0] baud_counter;
 reg [3:0] bit_count;
-reg [1:0] state;             
+reg [1:0] state;
 reg [7:0] data;
-          
-parameter
-        IDLE   = 2'b00,
-        MAIN   = 2'b01;    
+reg parity_bit;
 
-always @(posedge clk)
+parameter
+    IDLE = 2'b00,
+    MAIN = 2'b01;
+
+always @(posedge clk or negedge rst)
 begin
-       if (~rst)
-       begin
-            baud_counter <= 0;
-            bit_count    <= 0;
-            data_out     <= 1;
-            state        <= IDLE;
-            data         <= 0;
-            LED          <= 1;
-       end
-        
-       else if(baud_counter == 13019) // 125MHZ / 9600HZ
-       begin
-              baud_counter <= 0;
-     
-              case (state)
-                           IDLE:
-                           begin
-                                 data_out <= 1;
-  
-                                 if(tx_start)
-                                 begin
-                                       data      <= data_in; 
-                                       data_out  <= 0;
-                                       bit_count <= 0;
-                                       state     <= MAIN;
-                                 end
-                           end
-                           
-                       
-                           MAIN:
-                           begin
-                                if(bit_count < 8)
-                                begin
-                                     data_out  <= data[bit_count];
-                                     bit_count <= bit_count + 1;
-                                end
-                                    
-                                else if(bit_count == 8)
-                                begin
-                                     data_out  <= data[0] ^ data[1] ^ data[2] ^ data[3] ^ data[4] ^ data[5] ^ data[6] ^ data[7];
-                                     bit_count <= bit_count + 1;
-                                end
-                                
-                                else if(bit_count == 9)
-                                begin
-                                     data_out  <= 1;
-                                     bit_count <= bit_count + 1;
-                                end
-                                
-                                else if(bit_count == 10)
-                                begin
-                                     state     <= IDLE;
-                                     bit_count <= 0;
-                                end
-                           end
-                           
-              endcase
-       end
-       
-       else
-       begin
-            LED <= 0; 
-            baud_counter <= baud_counter + 1;
-       end
+    if (~rst)
+    begin
+        baud_counter <= 0;
+        bit_count    <= 0;
+        data_out     <= 1'b1;
+        state        <= IDLE;
+        data         <= 0;
+        parity_bit   <= 0;
+        LED          <= 0;
+    end
+
+    else if (baud_counter == 1084)//125MHZ/115200 baud
+    begin
+        baud_counter <= 0;
+
+        case (state)
+
+            IDLE:
+            begin
+                data_out <= 1'b1;
+
+                if (tx_start)
+                begin
+                    data <= data_in;
+                    if (parity_mode == 1'b0)
+                        parity_bit <= ^data_in; 
+                    else
+                        parity_bit <= ~^data_in;
+
+                    data_out  <= 1'b0;
+                    bit_count <= 0;
+                    state     <= MAIN;
+                    LED       <= 1'b1;
+                end
+            end
+
+            MAIN:
+            begin
+                if (bit_count < 8)
+                begin
+                    data_out  <= data[bit_count];
+                    bit_count <= bit_count + 1'b1;
+                end
+
+                else if (bit_count == 8)
+                begin
+                    data_out  <= parity_bit;
+                    bit_count <= bit_count + 1'b1;
+                end
+
+                else if (bit_count == 9)
+                begin
+                    data_out  <= 1'b1;
+                    bit_count <= bit_count + 1'b1;
+                end
+
+                else if (bit_count == 10)
+                begin
+                    state     <= IDLE;
+                    bit_count <= 0;
+                    LED       <= 1'b0;
+                    data_out  <= 1'b1;
+                end
+            end
+        endcase
+    end
+
+    else
+    begin
+        baud_counter <= baud_counter + 1'b1;
+    end
 end
+
+endmodule
